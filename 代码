@@ -1,0 +1,63 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+# Directory containing .out files
+my $directory = ".";
+
+# Open directory
+opendir my $dir, $directory or die "Cannot open directory: $!";
+
+# Filter and read only .out files
+my @files = grep { /\.out$/ } readdir($dir);
+closedir $dir;
+
+# Output CSV file
+my $output_csv = "output.csv";
+open my $csv, '>', $output_csv or die "Cannot create $output_csv: $!";
+
+# Write CSV header
+print $csv "File Name,K value,Random Seed,Loglikelihood,CV Error\n";
+
+# Prepare data array
+my @data;
+
+# Process each file
+foreach my $file (@files) {
+    open my $fh, "<", "$directory/$file" or die "Cannot open $file: $!";
+
+    my ($random_seed, $loglikelihood, $cv_error, $k_value);
+    while (my $line = <$fh>) {
+        if ($line =~ /Random seed: (\d+)/) {
+            $random_seed = $1;  # Capture Random Seed
+        }
+        if ($line =~ /Loglikelihood: ([\-\d\.e\+]+)/) {
+            $loglikelihood = $1;  # Capture Loglikelihood
+        }
+        if ($line =~ /CV error.*\(K=(\d+)\): ([\d\.]+)/) {
+            $cv_error = $2;  # Capture CV Error
+            $k_value = $1;  # Capture K value
+        }
+    }
+    close $fh;
+
+    # Add to data array if all variables are captured
+    if (defined $random_seed && defined $loglikelihood && defined $cv_error && defined $k_value) {
+        push @data, [$file, $k_value, $random_seed, $loglikelihood, $cv_error];
+    } else {
+        print "Missing data in file: $file\n";
+    }
+}
+
+# Sort data by K value and seed
+@data = sort { $a->[1] <=> $b->[1] or $a->[2] <=> $b->[2] } @data;
+
+# Write sorted data to CSV
+foreach my $entry (@data) {
+    print $csv join(',', @$entry), "\n";
+}
+
+# Close CSV file
+close $csv;
+
+print "Data extraction and sorting complete. Results are in $output_csv\n";
