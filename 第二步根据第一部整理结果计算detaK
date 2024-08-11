@@ -1,0 +1,65 @@
+library(dplyr)
+library(tibble)
+
+# 从CSV文件读取数据
+data <- read.csv("output.csv", stringsAsFactors = FALSE)
+
+# 计算每个K值的对数似然值的平均值和标准差
+loglikelihood_stats <- data %>%
+  group_by(K = K.value) %>%
+  summarise(
+    `Mean Loglikelihood` = mean(Loglikelihood, na.rm = TRUE),
+    `Stdev Loglikelihood` = sd(Loglikelihood, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# 计算每个K的对数似然值的“一阶中心差分”
+first_order_central_diff <- data %>%
+  arrange(Random.Seed, K.value) %>%
+  group_by(Random.Seed) %>%
+  mutate(`Ln'(K)` = lead(Loglikelihood, 1) - Loglikelihood) %>%
+  ungroup() %>%
+  filter(!is.na(`Ln'(K)`))
+
+# 计算每个K的一阶差分的平均值和标准差
+first_order_stats <- first_order_central_diff %>%
+  group_by(K = K.value) %>%
+  summarise(
+    `Mean |Ln'(K)|` = mean(abs(`Ln'(K)`), na.rm = TRUE),
+    `Stdev |Ln'(K)|` = sd(abs(`Ln'(K)`), na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# 计算每个K的对数似然值的“二阶中心差分”
+second_order_central_diff <- data %>%
+  arrange(Random.Seed, K.value) %>%
+  group_by(Random.Seed) %>%
+  mutate(`Ln''(K)` = lead(Loglikelihood, 1) + lag(Loglikelihood, 1) - 2 * Loglikelihood) %>%
+  ungroup() %>%
+  filter(!is.na(`Ln''(K)`))
+
+# 计算每个K的二阶差分的平均值和标准差
+second_order_stats <- second_order_central_diff %>%
+  group_by(K = K.value) %>%
+  summarise(
+    `Mean |Ln''(K)|` = mean(abs(`Ln''(K)`), na.rm = TRUE),
+    `Stdev |Ln''(K)|` = sd(abs(`Ln''(K)`), na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# 合并所有统计数据
+all_stats <- loglikelihood_stats %>%
+  left_join(first_order_stats, by = "K") %>%
+  left_join(second_order_stats, by = "K")
+
+# 计算Delta K
+all_stats <- all_stats %>%
+  mutate(
+    `Delta K` = `Mean |Ln''(K)|` / `Stdev Loglikelihood`
+  )
+
+# 输出结果
+print(all_stats)
+
+# 可选：将结果保存到CSV文件
+write.csv(all_stats, "combined_stats.csv", row.names = FALSE)
